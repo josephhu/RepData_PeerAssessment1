@@ -7,19 +7,129 @@ output:
 
 
 ## Loading and preprocessing the data
+First, check if we have the activity.csv file.
+If not, we unzip it from the activity.zip file.
+Then we read it to the data frame.
+```{r loadata}
+if (!file.exists("activity.csv")) {
+    unzip("activity.zip")
+}
+data <- read.csv("activity.csv")
+```
+Looks like there are days (for example the first day 2012-10-01) where none of the steps were measured so they are all NAs.
+```{r}
+head(data)
+```
 
 
 
 ## What is mean total number of steps taken per day?
+Examine the data per day, I look at the total number of steps, mean of steps and I count how many intervals have measurements.
 
+```{r}
+require(plyr)
+data.per.day <- ddply(data,"date",summarise, 
+                      sum=sum(steps,na.rm=TRUE),
+                      mean=mean(steps,na.rm=TRUE), 
+                      count=sum(!is.na(steps)))
+head(data.per.day)
 
+```
+This is a histogram of the total number steps taken each day.
+```{r}
+hist(data.per.day$sum, xlab='Total number of steps per day', 
+     main='Histogram of total number of steps')
+```
+
+And we can see the **mean** (9354) and **median** (10395) total number of setps taken per day.
+```{r}
+mean(data.per.day$sum)
+median(data.per.day$sum)
+# summary(data.per.day$sum)
+```
 
 ## What is the average daily activity pattern?
+Examine the data per interval (across all days)
+```{r}
+data.per.interval <- ddply(data,"interval",summarise,
+                           sum=sum(steps,na.rm=TRUE),
+                           mean=mean(steps,na.rm=TRUE))
+head(data.per.interval)
+```
+And we can show a time series plot of the 5-minute intervals and the average number of steps taken.
+```{r}
+plot(data.per.interval$interval,data.per.interval$mean,type="l",
+     xlab="Interval",ylab="Average number of steps")
+```
 
-
+We find the interval with maxinum average number of steps (across all days). This interval turns out to be 835 or the time 8:35 AM to 8:40 AM
+```{r}
+max <- max(data.per.interval$mean)
+subset(data.per.interval,mean==max)
+```
 
 ## Imputing missing values
 
+We can find out that there are 2304 rows of NA values in the origianl dataset.
+```{r}
+sum(is.na(data$steps))
+```
 
+We will just fill in the missing values with the average (across all days) number of steps for that interval
+```{r}
+data2 <- ddply(data, .(interval), mutate, avg=mean(steps,na.rm=TRUE))
+data2[is.na(data2$steps),]$steps <- data2[is.na(data2$steps),]$avg 
+```
 
-## Are there differences in activity patterns between weekdays and weekends?
+With the mising values filled in, I again look at the total number of steps and mean of steps.
+```{r}
+data2.per.day <- ddply(data2,"date",summarise, 
+                      sum=sum(steps,na.rm=TRUE),
+                      mean=mean(steps,na.rm=TRUE), 
+                      count=sum(!is.na(steps)))
+head(data2.per.day)
+```
+
+This is a histogram of the total number steps taken each day after the missing values were filed in.
+```{r}
+hist(data2.per.day$sum, xlab='Total number of steps per day (no NAs)', 
+     main='Histogram of total number of steps (no NAs)')
+```
+
+With missing values filled in the **mean** and **median** total number of setps taken per day both became 10766 - the previous mean.  This is as expected.
+```{r}
+mean(data2.per.day$sum)
+median(data2.per.day$sum)
+# summary(data2.per.day$sum)
+```
+
+Introduce another column "datetype" which tells us if the date was a weekday or not.
+```{r}
+getDateType <- function(x) {
+    if (weekdays(as.Date(x),abbreviate=TRUE) %in% c("Sat","Sun")) {
+		"weekend"
+	} else {
+		"weekday"
+	}
+}
+data3 <- data2
+data3$datetype <- sapply(data3$date, getDateType) 
+data3$datetype <- factor(data3$datetype)
+head(data3,n=7)
+```
+
+Now I again examine the steps per interval (across all days), but differentiate if the date was a weekday or not.
+```{r}
+data3.per.interval <- ddply(data3,.(interval,datetype),summarise,
+                           sum=sum(steps,na.rm=TRUE),
+                           mean=mean(steps,na.rm=TRUE))
+head(data3.per.interval)
+```
+We show a panel plot of average number of steps per interval.
+
+```{r}
+library(lattice)
+xyplot( mean ~ interval | datetype, data = data3.per.interval, layout = c(1,2),
+        type="l", ylab="Number of steps")
+```
+
